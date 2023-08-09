@@ -39,22 +39,35 @@ def search_folders(folder_paths, search_values, progress_bar, result_text):
     count = 0
 
     for folder_path in folder_paths:
-        for filename in os.listdir(folder_path):
-            if filename.endswith('.xlsx') and not filename.startswith('~$') and not filename.startswith('.'):
-                file_path = os.path.join(folder_path, filename)
-                try:
-                    xls = pd.read_excel(file_path, engine='openpyxl', sheet_name=None)
-                    for sheet_name, df in xls.items():
-                        for search_value in search_values:
-                            mask = df.applymap(lambda x: search_value in str(x))
-                            if mask.any().any():
-                                result = df[mask.any(axis=1)]
-                                messages.append(f'{search_value} found in {filename}, sheet: {sheet_name}, folder: {folder_path}')
-                except BadZipFile:
-                    messages.append(f'{filename} is not a valid .xlsx file')
-            count += 1
-            progress_bar.SetValue(count)
-            wx.Yield()
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            # Skip subdirectories that start with '.'
+            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            for filename in filenames:
+                if (filename.endswith('.xlsx') or filename.endswith('.csv')) and not filename.startswith('~$') and not filename.startswith('.'):
+                    file_path = os.path.join(dirpath, filename)
+                    try:
+                        if filename.endswith('.xlsx'):
+                            xls = pd.read_excel(file_path, engine='openpyxl', sheet_name=None)
+                            for sheet_name, df in xls.items():
+                                for search_value in search_values:
+                                    mask = df.applymap(lambda x: str(x) == search_value)
+                                    if mask.any().any():
+                                        result = df[mask.any(axis=1)]
+                                        result_str = result.to_string(index=False)
+                                        messages.append(f'{search_value} found in {filename}, sheet: {sheet_name}, folder: {folder_path}\n{result_str}')
+                        elif filename.endswith('.csv'):
+                            with open(file_path, 'r') as f:
+                                lines = f.readlines()
+                                for search_value in search_values:
+                                    for line in lines:
+                                        if search_value in line:
+                                            messages.append(f'{search_value} found in {filename}, folder: {folder_path}\n{line}')
+
+                    except BadZipFile:
+                        messages.append(f'{filename} is not a valid .xlsx file')
+                count += 1
+                progress_bar.SetValue(count)
+                wx.Yield()
 
     result_text.SetLabel("\n".join(messages))
 
@@ -79,9 +92,8 @@ class MyFrame(wx.Frame):
         self.panel = wx.Panel(self)
         self.sizer = wx.BoxSizer(wx.VERTICAL)
         self.label = wx.StaticText(self.panel, label="Drag and drop folders here", size=(250, 75), style=wx.SIMPLE_BORDER)
-        # self.label.SetBackgroundColour(wx.Colour(234, 160, 153)) # red outline
-        # self.label.SetForegroundColour(wx.Colour(255, 255, 255)) # white text
-        self.sizer.Add(self.label, 0, wx.ALL | wx.ALIGN_CENTER_HORIZONTAL, 5) # center label horizontally
+
+        self.sizer.Add(self.label, 0, wx.ALL | wx.ALIGN_CENTER_HORIZONTAL, 5) 
         drop_target = MyFileDropTarget(self)
         self.label.SetDropTarget(drop_target)
         self.search_ctrl = wx.SearchCtrl(self.panel, style=wx.TE_PROCESS_ENTER)
@@ -96,7 +108,6 @@ class MyFrame(wx.Frame):
         self.sizer.Add(self.result_text, 0, wx.ALL | wx.CENTER | wx.EXPAND, 5)
         self.panel.SetSizer(self.sizer)
         self.Layout()
-
 
     def update_label(self):
         label_text = "Selected folders:\n" + "\n".join(self.folder_paths)
