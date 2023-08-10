@@ -31,46 +31,54 @@ import os
 import pandas as pd
 from zipfile import BadZipFile
 import wx
+import threading
 
-def search_folders(folder_paths, search_values, progress_bar, result_text):
-    max_value = sum([len(os.listdir(folder_path)) for folder_path in folder_paths])
-    progress_bar.SetRange(max_value)
-    messages = []
-    count = 0
+class SearchThread(threading.Thread):
+    def __init__(self, folder_paths, search_values, progress_bar, result_text, search_button):
+        threading.Thread.__init__(self)
+        self.folder_paths = folder_paths
+        self.search_values = search_values
+        self.progress_bar = progress_bar
+        self.result_text = result_text
+        self.search_button = search_button
+        self.stop_event = threading.Event()
 
-    for folder_path in folder_paths:
-        for dirpath, dirnames, filenames in os.walk(folder_path):
-            # Skip subdirectories that start with '.'
-            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
-            for filename in filenames:
-                if (filename.endswith('.xlsx') or filename.endswith('.csv')) and not filename.startswith('~$') and not filename.startswith('.'):
-                    file_path = os.path.join(dirpath, filename)
-                    try:
-                        if filename.endswith('.xlsx'):
+    def run(self):
+        max_value = 0
+        for folder_path in self.folder_paths:
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                max_value += len(filenames)
+        wx.CallAfter(self.progress_bar.SetRange, max_value)
+        messages = []
+        count = 0
+
+        for folder_path in self.folder_paths:
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                for filename in filenames:
+                    if self.stop_event.is_set():
+                        return
+                    if filename.endswith('.xlsx') and not filename.startswith('~$') and not filename.startswith('.'):
+                        file_path = os.path.join(dirpath, filename)
+                        try:
                             xls = pd.read_excel(file_path, engine='openpyxl', sheet_name=None)
                             for sheet_name, df in xls.items():
-                                for search_value in search_values:
-                                    mask = df.applymap(lambda x: str(x) == search_value)
+                                for search_value in self.search_values:
+                                    mask = df.applymap(lambda x: search_value in str(x))
                                     if mask.any().any():
                                         result = df[mask.any(axis=1)]
-                                        result_str = result.to_string(index=False)
-                                        messages.append(f'{search_value} found in {filename}, sheet: {sheet_name}, folder: {folder_path}\n{result_str}')
-                        elif filename.endswith('.csv'):
-                            with open(file_path, 'r') as f:
-                                lines = f.readlines()
-                                for search_value in search_values:
-                                    for line in lines:
-                                        if search_value in line:
-                                            messages.append(f'{search_value} found in {filename}, folder: {folder_path}\n{line}')
+                                        messages.append(f'{search_value} found in {filename}, sheet: {sheet_name}, folder: {folder_path}')
+                        except BadZipFile:
+                            messages.append(f'{filename} is not a valid .xlsx file')
+                    count += 1
+                    wx.CallAfter(self.progress_bar.SetValue, count)
+                    wx.CallAfter(self.search_button.SetLabel, f"Stop ({int(count / max_value * 100)}%)")
+                    wx.Yield()
 
-                    except BadZipFile:
-                        messages.append(f'{filename} is not a valid .xlsx file')
-                count += 1
-                progress_bar.SetValue(count)
-                wx.Yield()
+        wx.CallAfter(self.result_text.SetLabel, "\n".join(messages))
+        wx.CallAfter(self.search_button.SetLabel, "Start")
 
-    result_text.SetLabel("\n".join(messages))
-
+    def stop(self):
+        self.stop_event.set()
 
 
 class MyFileDropTarget(wx.FileDropTarget):
@@ -84,11 +92,13 @@ class MyFileDropTarget(wx.FileDropTarget):
         self.window.update_label()
         return True
 
+
 class MyFrame(wx.Frame):
     def __init__(self, *args, **kwargs):
         super(MyFrame, self).__init__(*args, **kwargs)
         self.SetMinSize((600, 400))
         self.folder_paths = []
+        self.search_thread = None
         self.panel = wx.Panel(self)
         self.sizer = wx.BoxSizer(wx.VERTICAL)
         self.label = wx.StaticText(self.panel, label="Drag and drop folders here", size=(250, 75), style=wx.SIMPLE_BORDER)
@@ -97,9 +107,8 @@ class MyFrame(wx.Frame):
         drop_target = MyFileDropTarget(self)
         self.label.SetDropTarget(drop_target)
         self.search_ctrl = wx.SearchCtrl(self.panel, style=wx.TE_PROCESS_ENTER)
-        self.search_ctrl.Bind(wx.EVT_TEXT_ENTER, self.on_search)
         self.sizer.Add(self.search_ctrl, 0, wx.ALL | wx.EXPAND, 5)
-        self.search_button = wx.Button(self.panel, label="Search")
+        self.search_button = wx.Button(self.panel, label="Start")
         self.search_button.Bind(wx.EVT_BUTTON, self.on_search_button)
         self.sizer.Add(self.search_button, 0, wx.ALL | wx.CENTER, 5)
         self.progress_bar = wx.Gauge(self.panel)
@@ -110,16 +119,40 @@ class MyFrame(wx.Frame):
         self.Layout()
 
     def update_label(self):
-        label_text = "Selected folders:\n" + "\n".join(self.folder_paths)
-        self.label.SetLabel(label_text)
-
-    def on_search(self,event):
-      search_values=self.search_ctrl.GetValue().split()
-      search_folders(self.folder_paths ,search_values,self.progress_bar,self.result_text)
+      label_text = "Selected folders:\n" + "\n".join(self.folder_paths)
+      self.label.SetLabel(label_text)
 
     def on_search_button(self,event):
-      search_values=self.search_ctrl.GetValue().split()
-      search_folders(self.folder_paths ,search_values,self.progress_bar,self.result_text)
+      if not self.search_thread:
+          search_values=self.search_ctrl.GetValue().split()
+          if search_values:
+              event.GetEventObject().SetLabel("Stop")
+            #   event.GetEventObject().Bind(wx.EVT_ENTER_WINDOW,self.on_enter_window)
+            #   event.GetEventObject().Bind(wx.EVT_LEAVE_WINDOW,self.on_leave_window)
+
+              # Create a new SearchThread object and start it
+              self.search_thread=SearchThread(
+                  self.folder_paths,
+                  search_values,
+                  self.progress_bar,
+                  self.result_text,
+                  event.GetEventObject()
+              )
+              self.search_thread.start()
+      else:
+          event.GetEventObject().SetLabel("Start")
+          event.GetEventObject().Unbind(wx.EVT_ENTER_WINDOW)
+          event.GetEventObject().Unbind(wx.EVT_LEAVE_WINDOW)
+          self.search_thread.stop()
+          self.search_thread=None
+
+    # def on_enter_window(self,event):
+    #   event.GetEventObject().SetBackgroundColour(wx.Colour(255,0,0))
+    #   event.GetEventObject().Refresh()
+
+    # def on_leave_window(self,event):
+    #   event.GetEventObject().SetBackgroundColour(wx.NullColour)
+    #   event.GetEventObject().Refresh()
 
 app=wx.App()
 frame=MyFrame(None,title="Folder Search")
