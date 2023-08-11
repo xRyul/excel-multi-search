@@ -2,7 +2,8 @@
 
 Search through multiple excel files across multiple folders.
 
-
+![Alt text](img/Example1.webp)
+![Alt text](img/Example2.webp)
 
 https://github.com/xRyul/excel-multi-search/assets/47340038/c95eaba6-3d47-43d1-bbbc-559cfe403fe1
 
