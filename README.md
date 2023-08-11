@@ -5,7 +5,8 @@ Search through multiple excel files across multiple folders.
 
 ## How to install
 
-a) Download the latest releae
+a) Download the latest releae  
+
 b) Setup `venv environemnt` -> clone the repo -> install all the dependencies `pip install -r requirements.txt` -> rrun it `python main.py`
 
 ## How to compile whole python project into a macOS app  
