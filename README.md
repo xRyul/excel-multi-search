@@ -10,7 +10,7 @@ https://github.com/xRyul/excel-multi-search/assets/47340038/c95eaba6-3d47-43d1-b
 
 ## How to install
 
-a) Download the latest releae  
+a) Download the latest [release](https://github.com/xRyul/excel-multi-search/releases/)  
 
 b) Setup `venv environemnt` -> clone the repo -> install all the dependencies `pip install -r requirements.txt` -> rrun it `python main.py`
 
