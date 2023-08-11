@@ -3,6 +3,10 @@
 Search through multiple excel files across multiple folders.
 
 
+
+https://github.com/xRyul/excel-multi-search/assets/47340038/c95eaba6-3d47-43d1-bbbc-559cfe403fe1
+
+
 ## How to install
 
 a) Download the latest releae  
