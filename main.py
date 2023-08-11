@@ -4,6 +4,19 @@ from zipfile import BadZipFile
 import wx
 import threading
 
+# def activate_window():
+#     script = '''tell application "System Events"
+#                     set proc to the first process whose unix id is {}
+#                     if visible of proc is false then
+#                         set visible of proc to true
+#                     end if
+#                     if frontmost of proc is false then
+#                         set frontmost of proc to true
+#                     end if
+#                 end tell'''.format(os.getpid())
+#     os.system(f"osascript -e '{script}'")
+
+
 class SearchThread(threading.Thread):
     def __init__(self, folder_paths, search_values, progress_bar, result_text, search_button):
         threading.Thread.__init__(self)
@@ -80,7 +93,6 @@ class MyFrame(wx.Frame):
         self.sizer = wx.BoxSizer(wx.VERTICAL)
         self.label = wx.StaticText(self.panel, label="Drag and drop folders here", size=(
             250, 75), style=wx.SIMPLE_BORDER)
-
         self.sizer.Add(self.label, 0, wx.ALL | wx.ALIGN_CENTER_HORIZONTAL, 5)
         drop_target = MyFileDropTarget(self)
         self.label.SetDropTarget(drop_target)
@@ -95,6 +107,10 @@ class MyFrame(wx.Frame):
         self.sizer.Add(self.result_text, 0, wx.ALL | wx.CENTER | wx.EXPAND, 5)
         self.panel.SetSizer(self.sizer)
         self.Layout()
+
+    def Show(self):
+        super(MyFrame, self).Show()
+        self.search_ctrl.SetFocus()
 
     def update_label(self):
         label_text = "Selected folders:\n" + "\n".join(self.folder_paths)
@@ -122,6 +138,7 @@ class MyFrame(wx.Frame):
 
 
 app = wx.App()
-frame = MyFrame(None, title="Folder Search")
+frame = MyFrame(None, title="Excel Multi Search", style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
 frame.Show()
 app.MainLoop()
+
